@@ -1,6 +1,6 @@
 # Lunation (standalone)
 
-PixInsight-free port of [Lunation](https://github.com/dmead/lunation) — a
+PixInsight-free port of [Lunation for PixInsight](https://github.com/dmead/lunation-pixinsight) — a
 lunar lucky-imaging pipeline (SER decode → quality ranking → sub-pixel
 registration → drizzle stacking → finishing → phase-ordered lunation
 animation) as a plain Python package.
