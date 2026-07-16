@@ -38,19 +38,53 @@ def prep_sequence(frames_dir: str) -> tuple[str, int]:
 def encode(frames_dir: str, log=print) -> None:
     script, n = prep_sequence(frames_dir)
     seq = os.path.join(frames_dir, "seq_%02d.png")
-    common = ["ffmpeg", "-y", "-loglevel", "error",
-              "-framerate", str(FRAMERATE), "-i", seq,
-              "-filter_script:v", script]
-    jobs = [
-        ("mp4", common + ["-c:v", "libx264", "-pix_fmt", "yuv420p",
-                          "-crf", "17", "-r", "30",
-                          "-movflags", "+faststart",
-                          os.path.join(frames_dir, "lunation.mp4")]),
-        ("gif", common + [os.path.join(frames_dir, "lunation.gif")]),
-    ]
-    for name, argv in jobs:
-        log(f"encode {name}: {n} frames")
-        r = subprocess.run(argv, capture_output=True, text=True)
-        if r.returncode != 0:
-            raise RuntimeError(f"ffmpeg {name} failed: {r.stderr.strip()}")
-        log(f"encode {name} OK")
+    log(f"encode mp4: {n} frames")
+    argv = ["ffmpeg", "-y", "-loglevel", "error",
+            "-framerate", str(FRAMERATE), "-i", seq,
+            "-filter_script:v", script,
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "17",
+            "-r", "30", "-movflags", "+faststart",
+            os.path.join(frames_dir, "lunation.mp4")]
+    r = subprocess.run(argv, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"ffmpeg mp4 failed: {r.stderr.strip()}")
+    log("encode mp4 OK")
+
+    # GIF via Pillow with a PER-FRAME adaptive 256-color palette. ffmpeg's
+    # paletteless GIF path crushed lunar frames to ~50 colors (posterized
+    # terminator gradients); palettegen has crashed before on this box.
+    # 256 adaptive levels per frame is visually lossless on near-grayscale
+    # moons. Date stamps are burned by ffmpeg only into the MP4; the GIF
+    # gets them drawn here so both carry the same info.
+    log(f"encode gif: {n} frames (pillow, per-frame palettes)")
+    _encode_gif_pillow(frames_dir, n)
+    log("encode gif OK")
+
+
+def _encode_gif_pillow(frames_dir: str, n: int) -> None:
+    from PIL import Image, ImageDraw, ImageFont
+
+    try:
+        font = ImageFont.truetype("C:/Windows/Fonts/consola.ttf", 36)
+    except OSError:
+        font = ImageFont.load_default()
+    quantized = []
+    for k in range(n):
+        im = Image.open(os.path.join(frames_dir, f"seq_{k:02d}.png")).convert("RGB")
+        src = _seq_source(frames_dir, k)
+        m = re.search(r"\d{4}-\d{2}-\d{2}", src or "")
+        if m:
+            ImageDraw.Draw(im).text((34, im.height - 70), m.group(0),
+                                    fill=(166, 166, 166), font=font)
+        quantized.append(im.quantize(
+            colors=256, method=Image.Quantize.MEDIANCUT,
+            dither=Image.Dither.FLOYDSTEINBERG))
+    quantized[0].save(
+        os.path.join(frames_dir, "lunation.gif"), save_all=True,
+        append_images=quantized[1:], duration=round(1000 / FRAMERATE),
+        loop=0, optimize=False)
+
+
+def _seq_source(frames_dir: str, k: int) -> str | None:
+    frames = sorted(glob.glob(os.path.join(frames_dir, "frame_*.png")))
+    return os.path.basename(frames[k]) if k < len(frames) else None
