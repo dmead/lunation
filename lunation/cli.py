@@ -60,8 +60,12 @@ def render(
     canvas: int = typer.Option(2300, help="Working canvas size"),
     root: str = typer.Option(None, help="Production root to scan (out/ tree)"),
     inputs: str = typer.Option(None, help="Comma-separated dirs of dated .xisf finals"),
+    stamp: bool = typer.Option(True, help="Render into a fresh <out_dir>/run-<stamp> subdir"),
 ) -> None:
     """Render phase-ordered, disk-stable lunation frames (gif-frames parity)."""
+    import datetime
+    import os
+
     from .assemble.collect import collect
     from .assemble.render import run
 
@@ -69,7 +73,40 @@ def render(
                       input_dirs=inputs.split(",") if inputs else None)
     if out_dir == "dry":
         raise typer.Exit(0)
+    if stamp:
+        # fresh dir per run: input sets shift frame indices, and stale
+        # frame_NN files from a previous run would poison the encode
+        out_dir = os.path.join(
+            out_dir,
+            datetime.datetime.now().strftime("run-%Y%m%d-%H%M"))
     ok = run(out_dir, canvas, out_px, entries, explicit_order=True)
+    typer.echo(f"frames: {out_dir}")
+    raise typer.Exit(0 if ok else 1)
+
+
+@app.command()
+def prep(
+    config: str = typer.Option(None, help="Prep config JSON {targetR,canvas,log,items}"),
+    src: str = typer.Option(None, help="Single finished image to normalize"),
+    out: str = typer.Option(None, help="Output .xisf for --src"),
+) -> None:
+    """Normalize finished moon images for the lunation (prep-finished parity)."""
+    from .assemble import prep as prep_mod
+
+    if config:
+        from .stack.stacker import load_config
+
+        ok = prep_mod.run(load_config(config))
+    elif src and out:
+        try:
+            prep_mod.prep_image(src, out)
+            ok = True
+        except Exception as e:  # noqa: BLE001 — CLI boundary
+            typer.echo(f"PREP FAILED {src}: {e}")
+            ok = False
+    else:
+        typer.echo("need --config, or --src with --out")
+        ok = False
     raise typer.Exit(0 if ok else 1)
 
 
