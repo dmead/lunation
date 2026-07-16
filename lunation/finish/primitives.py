@@ -47,6 +47,14 @@ def gaussian(img: np.ndarray, sigma: float) -> np.ndarray:
     return cv2.GaussianBlur(np.asarray(img, dtype=np.float32), (0, 0), sigma)
 
 
+def pi_convolution(img: np.ndarray, sigma: float) -> np.ndarray:
+    """PI Convolution (Parametric, shape 2.0) equivalent. PI's parametric
+    kernels are exp(-(r/sigma)^shape) — a true Gaussian of sigma/sqrt(2)
+    (same convention as its deconvolution PSF, verified 2026-07-16), so a
+    'sigma 24' PI blur is narrower than a sigma-24 Gaussian."""
+    return gaussian(img, sigma / np.sqrt(2.0))
+
+
 # ---------------------------------------------------------------- starlet
 
 _B3 = np.array([1, 4, 6, 4, 1], dtype=np.float32) / 16.0

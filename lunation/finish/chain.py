@@ -20,7 +20,7 @@ from ..core.stats import luminance_pi
 from ..core.warp import translate
 from ..io.xisf_io import read_xisf, write_xisf
 from ..stack.logutil import JobLog
-from .primitives import (curve, gaussian, histogram_transform, mtf, mtf_for,
+from .primitives import (curve, gaussian, pi_convolution, histogram_transform, mtf, mtf_for,
                          lab01_to_rgb, rgb_to_lab01, rl_deconvolve,
                          starlet_sharpen)
 
@@ -195,9 +195,21 @@ def _run(cfg, log, progress):
         sigma_d = round(0.08 * max(L.shape))
         for k in all_keys:
             img = get(k)
-            put(k, np.clip(img - k_d * gaussian(img, sigma_d), 0, 1))
+            put(k, np.clip(img - k_d * pi_convolution(img, sigma_d), 0, 1))
             log(f"dehaze ch_{k}: subtracted {k_d} x blur(sigma {sigma_d}px)")
 
+    def _dump_stage(tag):
+        if not cfg.get("dumpStages"):
+            return
+        d = f"{cfg['dumpStages']}-{tag}"
+        os.makedirs(d, exist_ok=True)
+        write_xisf(f"{d}/L.xisf", L)
+        for ch in "RGB":
+            if ch in chans:
+                write_xisf(f"{d}/{ch}.xisf", chans[ch])
+        log(f"dumped {tag}")
+
+    _dump_stage("postdehaze")
     thr = max(0.15 * (disk_mean - sky_l), 0.01)
     log(f"auto disk threshold: {thr:.4f} (isodata split {t_iso:.4f},"
         f" disk mean {disk_mean:.4f})")
@@ -205,7 +217,7 @@ def _run(cfg, log, progress):
     # ---------------- smooth luminance sharpening mask ----------------
     sharp_mask = None
     if cfg.get("deconvolve") or cfg.get("sharpen") is not False:
-        m = gaussian(L, 24)
+        m = pi_convolution(L, 24)
         rng = float(m.max()) - float(m.min())
         m = (m - m.min()) / max(rng, 1e-6)
         sharp_mask = np.sqrt(m).astype(np.float32)
@@ -256,10 +268,16 @@ def _run(cfg, log, progress):
                 continue
             yy, xx = np.mgrid[0:h, 0:w]
             plane = a * xx + b * yy + c
-            chans[ch] = np.clip(img * p_mean / np.maximum(plane, 1e-9),
-                                0, 1).astype(np.float32)
+            # divide KEEPING the plane's sign: with extreme tilts the plane
+            # crosses zero inside the frame; PI's PixelMath yields negative
+            # values there and truncates to 0. Clamping the divisor positive
+            # instead flipped those regions to 1.0 (found on H_2025-03-04's
+            # 595% tilt, 2026-07-16).
+            safe = np.where(np.abs(plane) < 1e-9, np.inf, plane)
+            chans[ch] = np.clip(img * p_mean / safe, 0, 1).astype(np.float32)
             log(f"{ch}: flattened {100 * span:.1f}% illumination tilt vs L")
 
+    _dump_stage("postflatten")
     # ---------------- disk mask + white balance (linear) ----------------
     disk = L > thr
     log(f"disk fraction: {100 * float(disk.mean()):.1f}%")
@@ -309,6 +327,15 @@ def _run(cfg, log, progress):
                     sharp_mask)
 
     # ---------------- RGB combine + LRGB + chroma work ----------------
+    if cfg.get("dumpPreLrgb"):
+        # calibration/debug hook: the exact inputs the LRGB step consumes
+        d = cfg["dumpPreLrgb"]
+        os.makedirs(d, exist_ok=True)
+        write_xisf(f"{d}/pre_L.xisf", L)
+        for ch in "RGB":
+            if ch in chans:
+                write_xisf(f"{d}/pre_{ch}.xisf", chans[ch])
+        log(f"dumped pre-LRGB channels to {d}")
     final = None
     if all(k in chans for k in "RGB"):
         rgb = np.stack([chans["R"], chans["G"], chans["B"]], axis=-1)
@@ -318,24 +345,22 @@ def _run(cfg, log, progress):
         m_l = lp.get("mL", 0.5)
         m_c = lp.get("mc", 0.35)
         lab_l, lab_a, lab_b = rgb_to_lab01(rgb)
-        # LRGB: lightness replaced by the (MTF-balanced) L image; chroma
-        # deviations balanced by mc (mc < 0.5 boosts, > 0.5 mutes)
+        # LRGB semantics measured from an isolated PI probe (2026-07-16):
+        # output L* IS the (MTF-balanced) L image (corr 1.0000), hue is
+        # preserved, and chroma deviations scale UNIFORMLY by
+        # 2*mtf(mc, 0.5) (probe: x1.084 at mc 0.45; model gives 1.10).
         lab_l = mtf(m_l, L)
-        ca = lab_a - 0.5
-        cb = lab_b - 0.5
-        sat = np.hypot(ca, cb)
-        sat_t = mtf(m_c, np.clip(sat * 2, 0, 1)) / 2  # normalize ~[0,0.5]
-        gain = sat_t / np.maximum(sat, 1e-6)
-        lab_a = 0.5 + ca * gain
-        lab_b = 0.5 + cb * gain
+        gain = 2.0 * float(mtf(m_c, 0.5))
+        lab_a = 0.5 + (lab_a - 0.5) * gain
+        lab_b = 0.5 + (lab_b - 0.5) * gain
         log(f"LRGB combined (mL={m_l} mc={m_c})")
 
         if cfg.get("chromaSmooth") or cfg.get("chromaBoost"):
             boost = cfg.get("chromaBoost") or 1
             ba, bb = (boost if isinstance(boost, list) else (boost, boost))
             if cfg.get("chromaSmooth"):
-                lab_a = gaussian(lab_a, cfg["chromaSmooth"])
-                lab_b = gaussian(lab_b, cfg["chromaSmooth"])
+                lab_a = pi_convolution(lab_a, cfg["chromaSmooth"])
+                lab_b = pi_convolution(lab_b, cfg["chromaSmooth"])
             lab_a = np.clip(0.5 + (lab_a - 0.5) * ba, 0, 1)
             lab_b = np.clip(0.5 + (lab_b - 0.5) * bb, 0, 1)
             log(f"chroma: smooth sigma {cfg.get('chromaSmooth', 0)},"
