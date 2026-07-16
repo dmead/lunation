@@ -84,6 +84,69 @@ def small_lum(img: np.ndarray, canvas: int) -> np.ndarray:
     return cv2.resize(lum, (SMALL, SMALL), interpolation=cv2.INTER_LINEAR)
 
 
+def desaturate_fringes(frame: np.ndarray,
+                       disk_r: float) -> tuple[np.ndarray, int]:
+    """Clamp channel-registration fringes toward the LOCAL ambient chroma.
+
+    Style-independent discriminator (ground rule: no constants tuned to
+    one imager's data — other rigs and saturated processing styles must pass
+    through untouched): genuine color, however strong, is spatially SMOOTH;
+    registration fringes are high-frequency chroma outliers. We compare each
+    pixel's chroma to the local ambient chroma field (Gaussian at a scale
+    tied to the disk radius) and act only on residuals beyond a robust-sigma
+    threshold of the frame's OWN residual distribution. Offenders have their
+    color deviation scaled back to the ambient level — never to gray — so a
+    mineral moon keeps its saturation while R/G/B streaks vanish on any rig.
+    Smooth sigma-ramped blend, never a binarized mask."""
+    Z0, Z1 = 8.0, 16.0  # robust-sigma ramp (units of the frame's own noise)
+    if frame.ndim != 3:
+        return frame, 0
+    lum = frame.mean(axis=2)
+    chroma = frame.max(axis=2) - frame.min(axis=2)
+    # lit terrain, self-normalized (finals may be stretched differently)
+    lit = lum > max(0.05, 0.15 * float(np.percentile(lum, 99)))
+    if not np.any(lit):
+        return frame, 0
+    # SATURATION field (chroma/L): raw chroma inherits albedo texture on a
+    # tinted frame (chroma = tint x luminance), drowning fringes in its own
+    # variance; saturation cancels the texture and stays smooth for any
+    # genuine style while fringes still spike
+    sat = np.where(lit, chroma / np.maximum(lum, 1e-6), 0.0).astype(np.float32)
+    sigma_px = max(5.0, disk_r / 12.0)
+
+    def masked_ambient(weight):
+        # normalized (masked) blur: a plain Gaussian dilutes the ambient
+        # level toward zero at the limb and fakes an edge ring
+        num = cv2.GaussianBlur(sat * weight, (0, 0), sigma_px)
+        den = cv2.GaussianBlur(weight, (0, 0), sigma_px)
+        return num / np.maximum(den, 1e-3)
+
+    def zscore(ambient):
+        resid = sat - ambient
+        r_lit = resid[lit]
+        mad = float(np.median(np.abs(r_lit - np.median(r_lit))))
+        return resid / max(1.4826 * mad, 1e-4)
+
+    # single pass: catches sharp registration streaks on any style. A
+    # mid-scale chroma WASH is damaged source data, not a render problem —
+    # chasing it here risks eating genuine styles (tested and rejected
+    # 2026-07-16); such finals get fixed at the source or dropped.
+    litf = lit.astype(np.float32)
+    ambient = masked_ambient(litf)
+    z = zscore(ambient)
+    w = np.clip((z - Z0) / (Z1 - Z0), 0.0, 1.0) * lit
+    n = int((w > 0).sum())
+    if n == 0:
+        return frame, 0
+    gray = lum[..., None]
+    # target: same hue direction, saturation reduced to the ambient level
+    target_chroma = np.maximum(ambient, 0.0) * lum
+    scale = (target_chroma / np.maximum(chroma, 1e-6))[..., None]
+    target = gray + (frame - gray) * np.clip(scale, 0.0, 1.0)
+    w3 = w[..., None]
+    return frame * (1 - w3) + target * w3, n
+
+
 def make_sky_mask(canvas: int, ref_r: float) -> np.ndarray:
     yy, xx = np.mgrid[0:canvas, 0:canvas]
     c = canvas / 2
@@ -359,6 +422,13 @@ def _run(out_dir, canvas, out_px, entries, explicit_order, jl):
         if k == 0:
             anchor_lum = rl
             maria_blobs(rl, ref_r * SMALL / canvas)  # advisory only
+
+        # chroma sanitizer: high-frequency chroma outliers are registration
+        # fringes on any rig; smooth color of any strength passes through
+        frame, n_desat = desaturate_fringes(frame, ref_r)
+        if n_desat:
+            info.append(f"  {_name(files[idx])}: desaturated {n_desat}"
+                        " chroma-fringe px (adaptive)")
 
         # black sky beyond the disk, then final resample
         frame = frame * (sky_mask if frame.ndim == 2 else sky_mask[..., None])
