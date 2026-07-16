@@ -104,8 +104,13 @@ def main():
     py_r = translate(py, -dx, -dy)
     print(f"registration: py is offset ({dx:+.2f}, {dy:+.2f}) px vs pi")
 
-    dm = disk_mask(pi)
-    sm = sky_mask(pi)
+    # exclude the registration's border fill — a fill/sky step inside a mask
+    # reads as huge fake "noise" (found on the H_2025-03-04_osc validation)
+    covered = translate(np.ones_like(py), -dx, -dy) > 0.5
+    covered = cv2.erode(covered.astype(np.uint8),
+                        np.ones((9, 9), np.uint8)).astype(bool)
+    dm = disk_mask(pi) & covered
+    sm = sky_mask(pi) & covered
     rows = [
         ("disk detail (lap std)", lap_std(pi, dm), lap_std(py_r, dm), "higher"),
         ("sky noise sigma", float(pi[sm].std()), float(py_r[sm].std()), "lower"),
