@@ -1,0 +1,11 @@
+# python toolchain (uv-managed)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+
+# machine-local outputs
+out/
+*.log
+local-settings.json
