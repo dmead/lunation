@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lunation.core.fftreg import PhaseCorrelator
 from lunation.core.kernels import LAPLACIAN
 from lunation.core.warp import translate
-from lunation.io.xisf_io import read_xisf
+from lunation.io.images import read_image
+from lunation.core.stats import luminance
 
 
 def lap_std(img, mask=None):
@@ -89,8 +90,8 @@ def main():
     ap.add_argument("--tile", type=int, default=384)
     a = ap.parse_args()
 
-    pi = read_xisf(a.pi)
-    py = read_xisf(a.py)
+    pi = luminance(read_image(a.pi))
+    py = luminance(read_image(a.py))
     if pi.shape != py.shape:
         print(f"NOTE: shapes differ pi={pi.shape} py={py.shape}; "
               "cropping to common")
@@ -111,6 +112,13 @@ def main():
                         np.ones((9, 9), np.uint8)).astype(bool)
     dm = disk_mask(pi) & covered
     sm = sky_mask(pi) & covered
+
+    # radiometric normalization: different tools scale output levels
+    # differently (e.g. PSS ~2x); match disk means so detail/noise compare
+    gain = float(pi[dm].mean()) / max(1e-9, float(py_r[dm].mean()))
+    if abs(gain - 1.0) > 0.02:
+        print(f"level normalization: py x{gain:.4f} (disk-mean match)")
+    py_r = py_r * gain
     rows = [
         ("disk detail (lap std)", lap_std(pi, dm), lap_std(py_r, dm), "higher"),
         ("sky noise sigma", float(pi[sm].std()), float(py_r[sm].std()), "lower"),

@@ -23,7 +23,15 @@ def _normalize(a: np.ndarray) -> np.ndarray:
 def read_image(path: str) -> np.ndarray:
     ext = os.path.splitext(path)[1].lower()
     if ext in (".tif", ".tiff"):
-        a = tifffile.imread(path)
+        try:
+            a = tifffile.imread(path)
+        except ValueError:
+            # compressed variants (LZW etc.) without imagecodecs -> cv2
+            a = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+            if a is None:
+                raise
+            if a.ndim == 3:
+                a = cv2.cvtColor(a, cv2.COLOR_BGR2RGB)
         if a.ndim == 3 and a.shape[2] > 3:
             a = a[:, :, :3]
         return _normalize(a)
