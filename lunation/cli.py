@@ -110,6 +110,26 @@ def prep(
     raise typer.Exit(0 if ok else 1)
 
 
+@app.command()
+def finish(
+    config: str = typer.Argument(..., help="Finish config JSON (old schema)"),
+    stacks_dir: str = typer.Option(None, help="Override stacksDir"),
+    out_dir: str = typer.Option(None, help="Override outDir"),
+) -> None:
+    """Finish per-filter stacks into a color final (lunar-finish parity)."""
+    from .finish.chain import run
+    from .stack.stacker import load_config
+
+    cfg = load_config(config)
+    if stacks_dir:
+        cfg["stacksDir"] = stacks_dir
+    if out_dir:
+        cfg["outDir"] = out_dir
+        cfg["log"] = f"{out_dir}/finish.log"
+    ok = run(cfg, config)
+    raise typer.Exit(0 if ok else 1)
+
+
 def main() -> None:
     app()
 
