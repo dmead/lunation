@@ -1,4 +1,4 @@
-"""Lunation CLI. M0 ships the skeleton; stack/trim commands land in M1."""
+"""Lunation CLI."""
 
 import typer
 
@@ -11,6 +11,46 @@ def version() -> None:
     from importlib.metadata import version as v
 
     typer.echo(v("lunation"))
+
+
+@app.command()
+def stack(
+    config: str = typer.Option(..., help="Dataset config JSON (old schema)"),
+    only: str = typer.Option(None, help="Comma-separated job ids"),
+    out_root: str = typer.Option(None, help="Override outDir (keeps PI baselines safe)"),
+    workers: int = typer.Option(None, help="Frame workers per job (default: cores-2, max 6)"),
+) -> None:
+    """Stack every SER job of a dataset config."""
+    from .stack.runner import run_dataset
+
+    ok = run_dataset(config, only.split(",") if only else None,
+                     out_root, workers)
+    raise typer.Exit(0 if ok else 1)
+
+
+@app.command("stack-one")
+def stack_one(
+    job_config: str = typer.Argument(..., help="Expanded per-job config JSON"),
+) -> None:
+    """Run a single stack job from an expanded config (ser-stack.js parity)."""
+    from .stack import stacker
+
+    ok = stacker.run(stacker.load_config(job_config), job_config)
+    raise typer.Exit(0 if ok else 1)
+
+
+@app.command()
+def trim(
+    in_ser: str = typer.Argument(...),
+    out_ser: str = typer.Argument(...),
+    keep: float = typer.Argument(..., help="Fraction of frames to keep"),
+    log: str = typer.Argument(...),
+) -> None:
+    """Frame-select + ROI-crop a SER (ser-trim.js parity)."""
+    from .stack.trim import run
+
+    ok = run(in_ser, out_ser, keep, log)
+    raise typer.Exit(0 if ok else 1)
 
 
 def main() -> None:
