@@ -74,4 +74,9 @@ def resample(
     src = np.asarray(img, dtype=np.float32)
     w = int(round(src.shape[1] * scale))
     h = int(round(src.shape[0] * scale))
-    return cv2.resize(src, (w, h), interpolation=_CV2_INTERP[interp])
+    flag = _CV2_INTERP[interp]
+    # PI's Mitchell is an anti-aliasing cubic; cv2 INTER_CUBIC aliases on
+    # downscale, INTER_AREA is the equivalent-quality choice there
+    if interp == "mitchell" and scale < 1:
+        flag = cv2.INTER_AREA
+    return cv2.resize(src, (w, h), interpolation=flag)

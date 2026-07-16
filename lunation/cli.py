@@ -53,6 +53,26 @@ def trim(
     raise typer.Exit(0 if ok else 1)
 
 
+@app.command()
+def render(
+    out_dir: str = typer.Argument(..., help="Output dir for lunation frames ('dry' = list inputs only)"),
+    out_px: int = typer.Option(1080, help="Frame size (0 = measure-only)"),
+    canvas: int = typer.Option(2300, help="Working canvas size"),
+    root: str = typer.Option(None, help="Production root to scan (out/ tree)"),
+    inputs: str = typer.Option(None, help="Comma-separated dirs of dated .xisf finals"),
+) -> None:
+    """Render phase-ordered, disk-stable lunation frames (gif-frames parity)."""
+    from .assemble.collect import collect
+    from .assemble.render import run
+
+    entries = collect(root=root,
+                      input_dirs=inputs.split(",") if inputs else None)
+    if out_dir == "dry":
+        raise typer.Exit(0)
+    ok = run(out_dir, canvas, out_px, entries, explicit_order=True)
+    raise typer.Exit(0 if ok else 1)
+
+
 def main() -> None:
     app()
 
