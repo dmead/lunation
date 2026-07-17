@@ -10,6 +10,20 @@ Node: numeric core (M0), drizzle stacking (M1), lunation assembly + encode
 (M2), finishing chain (M3), and the orchestrating scheduler + packaging
 (M4). See `docs/PORT-PLAN.md` for the milestone plan and validation bars.
 
+## Examples
+
+A season of captures, stacked, finished, disk-stabilized, and encoded by
+this pipeline (`lunation run` end to end — 27 nights, phase-ordered):
+
+![lunation animation](docs/assets/lunation.gif)
+
+The GUI's aligned preview, built straight from **raw SER captures** — one
+decent frame per night, disk-fit, rotation-registered by the same chain
+the animation uses, no stacking or finishing (this is what Scan assembles
+so you can judge a season before spending compute on it):
+
+![aligned nights](docs/assets/nights-aligned.png)
+
 ## Install
 
 ```bash
