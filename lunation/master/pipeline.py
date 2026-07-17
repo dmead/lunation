@@ -23,7 +23,10 @@ import sys
 
 from .job import NEVER, Job
 
-_CLI = [sys.executable, "-m", "lunation"]
+# frozen app (PyInstaller): the exe IS the CLI when given args — there is
+# no python/-m inside a bundle
+_CLI = ([sys.executable] if getattr(sys, "frozen", False)
+        else [sys.executable, "-m", "lunation"])
 
 
 def _load(path: str) -> dict:

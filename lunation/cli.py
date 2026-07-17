@@ -8,9 +8,13 @@ app = typer.Typer(help="Lunation — standalone lunar lucky-imaging pipeline.")
 @app.command()
 def version() -> None:
     """Print the package version."""
+    from importlib.metadata import PackageNotFoundError
     from importlib.metadata import version as v
 
-    typer.echo(v("lunation"))
+    try:
+        typer.echo(v("lunation"))
+    except PackageNotFoundError:  # frozen bundle without dist metadata
+        typer.echo("unknown (no package metadata)")
 
 
 @app.command()
