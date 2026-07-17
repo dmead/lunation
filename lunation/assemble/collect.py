@@ -49,8 +49,9 @@ def _push_xisf(entries, dir_, file, kind):
 
 def collect(root: str | None = None,
             input_dirs: list[str] | None = None,
-            log=print) -> list[tuple[str, float]]:
-    """Returns [(final_path, age_days)] thinnest -> fullest ('ordered')."""
+            log=print, out_dir: str | None = None) -> list[tuple[str, float]]:
+    """Returns [(final_path, age_days)] thinnest -> fullest ('ordered').
+    The production tree is `out_dir` if given, else `<root>/out`."""
     entries: list[dict] = []
     if input_dirs:
         for raw in input_dirs:
@@ -58,9 +59,9 @@ def collect(root: str | None = None,
             for f in sorted(os.listdir(d)):
                 _push_xisf(entries, d, f, "ingest")
     else:
-        if not root:
-            raise ValueError("collect needs root or input_dirs")
-        out = f"{root}/out"
+        if not (root or out_dir):
+            raise ValueError("collect needs root, out_dir or input_dirs")
+        out = (out_dir or f"{root}/out").replace("\\", "/").rstrip("/")
         # pipeline sessions: out/<date>/final/moon_<date>[_sharp3].xisf
         for d in sorted(os.listdir(out)):
             if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d):

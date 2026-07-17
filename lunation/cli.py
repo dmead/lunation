@@ -40,6 +40,17 @@ def stack_one(
 
 
 @app.command()
+def avi2ser(
+    in_avi: str = typer.Argument(...),
+    out_ser: str = typer.Argument(...),
+) -> None:
+    """Repackage an AVI capture as a SER (decode only, no processing)."""
+    from .io.avi import convert
+
+    typer.echo(convert(in_avi, out_ser))
+
+
+@app.command()
 def trim(
     in_ser: str = typer.Argument(...),
     out_ser: str = typer.Argument(...),
@@ -59,6 +70,7 @@ def render(
     out_px: int = typer.Option(1080, help="Frame size (0 = measure-only)"),
     canvas: int = typer.Option(2300, help="Working canvas size"),
     root: str = typer.Option(None, help="Production root to scan (out/ tree)"),
+    scan_out: str = typer.Option(None, help="Production out/ tree to scan directly"),
     inputs: str = typer.Option(None, help="Comma-separated dirs of dated .xisf finals"),
     stamp: bool = typer.Option(True, help="Render into a fresh <out_dir>/run-<stamp> subdir"),
 ) -> None:
@@ -69,7 +81,7 @@ def render(
     from .assemble.collect import collect
     from .assemble.render import run
 
-    entries = collect(root=root,
+    entries = collect(root=root, out_dir=scan_out,
                       input_dirs=inputs.split(",") if inputs else None)
     if out_dir == "dry":
         raise typer.Exit(0)
@@ -128,6 +140,49 @@ def finish(
         cfg["log"] = f"{out_dir}/finish.log"
     ok = run(cfg, config)
     raise typer.Exit(0 if ok else 1)
+
+
+@app.command()
+def encode(
+    frames_dir: str = typer.Argument(..., help="Dir of frame_*.png renders"),
+) -> None:
+    """Encode rendered lunation frames to lunation.{mp4,gif}."""
+    from .assemble import encode as encode_mod
+
+    raise typer.Exit(0 if encode_mod.run(frames_dir) else 1)
+
+
+@app.command()
+def run(
+    root: str = typer.Argument(..., help="Pipeline root (configs/auto + out/)"),
+    sessions: str = typer.Option(None, help="Comma-separated session names"),
+    workers: int = typer.Option(None, help="Frame workers per stack job"),
+    jobs: int = typer.Option(1, help="Concurrent heavy jobs"),
+    gif: bool = typer.Option(True, help="Render+encode the lunation after finishes"),
+    out_px: int = typer.Option(1080, help="Lunation frame size"),
+    canvas: int = typer.Option(2300, help="Lunation working canvas"),
+) -> None:
+    """Run the full DAG: stack -> finish -> gif (soft deps) -> encode."""
+    from .master.pipeline import build_dag
+    from .master.scheduler import Scheduler
+
+    dag = build_dag(root, sessions.split(",") if sessions else None,
+                    workers, gif, out_px, canvas)
+    typer.echo(f"{len(dag)} job(s): "
+               + ", ".join(j.id for j in dag))
+    ok = Scheduler(dag, heavy_cap=jobs).run()
+    raise typer.Exit(0 if ok else 1)
+
+
+@app.command()
+def gui(
+    output: str = typer.Option(None, help="Output tree (configs are stored"
+                               " with it, under lunation_<id> run dirs)"),
+) -> None:
+    """Open the Lunation master window (needs the [gui] extra)."""
+    from .gui.app import run as gui_run
+
+    raise typer.Exit(gui_run(output))
 
 
 def main() -> None:

@@ -61,6 +61,29 @@ def encode(frames_dir: str, log=print) -> None:
     log("encode gif OK")
 
 
+def run(frames_dir: str) -> bool:
+    """Job wrapper: encode.log with standard sentinels, for the master
+    scheduler (replaces Encode.jsh's ffmpeg `-progress` file tailing —
+    both ends of that contract are ours now)."""
+    import time
+    import traceback
+
+    from ..stack.logutil import JobLog
+
+    jl = JobLog(os.path.join(frames_dir, "encode.log"))
+    t0 = time.time()
+    try:
+        encode(frames_dir, log=jl.log)
+        jl.log(f"=== ENCODE OK ({time.time() - t0:.1f} s) ===")
+        return True
+    except Exception as e:  # noqa: BLE001 — job boundary
+        jl.log(f"*** ENCODE FAILED: {e}")
+        jl.log(traceback.format_exc())
+        return False
+    finally:
+        jl.close()
+
+
 def _encode_gif_pillow(frames_dir: str, n: int) -> None:
     from PIL import Image, ImageDraw, ImageFont
 
