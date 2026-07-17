@@ -1,0 +1,35 @@
+name: bundle
+# Desktop app bundles (PyInstaller) for Windows and macOS, smoke-tested
+# on the target OS (offscreen window build), attached to a release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: release tag to attach bundles to (empty = build only)
+        default: ""
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-extras
+      - run: uv run python packaging/build_app.py --dist bundle-out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.os }}
+          path: bundle-out/Lunation-*.zip
+      - name: attach to release
+        if: ${{ inputs.release != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release upload "${{ inputs.release }}" bundle-out/Lunation-*.zip --clobber
