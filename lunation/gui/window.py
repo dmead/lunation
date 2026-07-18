@@ -219,7 +219,7 @@ class MasterWindow(QWidget):
         close_btn = QPushButton("Close", self)
         close_btn.clicked.connect(self.close)
 
-        # numbered areas, top to bottom (fixed order):
+        # numbered areas, top to bottom:
         # ① inputs  ② processing  ③ options  ④ output  ⑤ run
         g1 = QGroupBox("① choose inputs", self)
         paths_row = QHBoxLayout(g1)

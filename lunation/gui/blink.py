@@ -25,8 +25,8 @@ from ..core.warp import rotate
 from ..io.ser import SerReader
 from .preview import autostretch
 
-# lum first, chroma last (fixed: "lum if it's lrgb, whichever decent
-# frame if it's osc")
+# lum first, chroma last: lum if the night is LRGB, whichever decent
+# frame if it's OSC
 _CHANNEL_PREF = {"L": 0, "MONO": 1, "OSC": 2, "G": 3, "R": 4, "B": 5,
                  "S": 6, "H": 7}
 

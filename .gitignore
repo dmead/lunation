@@ -9,3 +9,8 @@ dist/
 out/
 *.log
 local-settings.json
+
+# local-only (dev machine specifics, assistant instructions, planning)
+CLAUDE.md
+docs/PORT-PLAN.md
+scripts/py.sh

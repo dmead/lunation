@@ -45,8 +45,6 @@ packages = ["lunation"]
 include = ["lunation/**", "README.md", "pyproject.toml"]
 
 [tool.uv]
-# keep caches off the system drive — python-install-dir/cache-dir are set via env in scripts/py.sh
-# and documented in README; .venv lives in-repo on D:.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

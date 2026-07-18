@@ -116,7 +116,6 @@ tailers used, so stages still mix freely with the old pipeline.
 
 ```bash
 # uv manages everything incl. Python itself (no system Python needed)
-. scripts/py.sh      # keeps uv caches off C: locally
 uv sync
 uv run pytest -q
 ```
